@@ -93,8 +93,17 @@ Deux workflows GitHub Actions, strictement séparés :
 5. **ci-success** — statut agrégé unique, à utiliser comme *required
    check* dans la protection de branche `main`.
 
-### `cd.yml` — uniquement après un CI vert (`workflow_run`), sur `main`,
-`develop`, ou un tag `vX.Y.Z`
+### `premerge-cd.yml` — sur les pull requests ciblant `main`
+
+1. **build** — une image Docker par composant, construite une seule fois.
+2. **scan-images** — scan Trivy sur chaque image construite.
+3. **e2e-deploy** — même déploiement éphémère Kind/OpenFaaS/PostgreSQL
+   que la CD, avec tests fonctionnels de bout en bout.
+4. **premerge-cd-success** — statut agrégé unique, à exiger comme
+   second *required check* pour empêcher le merge vers `main` si la
+   validation CD pré-merge échoue.
+
+### `cd.yml` — uniquement après un CI vert (`workflow_run`) sur `main`
 
 1. **build** — une image Docker par composant (3 fonctions via `faas-cli
    build` + frontend via `frontend/Dockerfile`), construite **une seule
@@ -119,6 +128,10 @@ Deux workflows GitHub Actions, strictement séparés :
    GitHub ne peut pas atteindre un cluster interne), et protégé par
    l'environnement GitHub `production` qui exige une **approbation
    manuelle** avant exécution.
+
+Pour sécuriser `main`, il faut configurer dans GitHub la protection de
+branche avec au minimum ces checks requis : `CI OK ✅` et `Pre-merge CD
+OK`.
 
 ### Secrets / environnements GitHub à configurer
 
