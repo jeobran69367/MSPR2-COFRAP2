@@ -127,7 +127,11 @@ jobs:
           name: image-${{ matrix.component }}
 
       - name: Trivy — scan de l'archive Docker
-        uses: aquasecurity/trivy-action@0.24.0
+        # Pin par SHA de commit, pas par tag mutable : suite à la compromission
+        # de la chaîne d'approvisionnement de trivy-action en mars 2026 (tags
+        # réécrits de force pour distribuer un voleur d'identifiants), seul le
+        # SHA correspondant au tag 0.35.0 est confirmé sain.
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
           input: image-${{ matrix.component }}.tar
           format: table
