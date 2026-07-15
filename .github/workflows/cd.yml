@@ -121,6 +121,9 @@ jobs:
       matrix:
         component: [generate-password, generate-2fa, authenticate, frontend]
     steps:
+      - name: Checkout du dépôt (pour .trivyignore)
+        uses: actions/checkout@v4
+
       - name: Download de l'image
         uses: actions/download-artifact@v4
         with:
@@ -133,6 +136,7 @@ jobs:
         # SHA correspondant au tag 0.35.0 est confirmé sain.
         uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1
         with:
+          trivyignores: .trivyignore
           input: image-${{ matrix.component }}.tar
           format: table
           severity: CRITICAL,HIGH

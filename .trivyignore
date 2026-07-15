@@ -1,0 +1,18 @@
+# .trivyignore
+#
+# Ces CVE concernent le binaire "of-watchdog" (Go), embarqué tel quel par
+# le template officiel OpenFaaS "python3-http" dans chaque image de
+# fonction. Nous ne compilons pas ce binaire nous-mêmes et n'avons pas de
+# moyen de le corriger sans qu'OpenFaaS republie une version du template
+# avec un of-watchdog recompilé sur une version corrigée de Go.
+#
+# Risque accepté et documenté (cf. dossier MSPR, section sécurité) :
+# aucune de ces CVE ne concerne notre code applicatif (les 3 fonctions
+# serverless ou le frontend). À revoir à chaque mise à jour du template.
+#
+# Revue : voir https://github.com/openfaas/of-watchdog/releases pour une
+# éventuelle version corrigée avant de retirer ces lignes.
+
+CVE-2026-27145
+CVE-2026-39822
+CVE-2026-42504
