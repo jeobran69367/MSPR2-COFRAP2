@@ -4,6 +4,7 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 2
     commit-message:
       prefix: "ci"
 
@@ -11,6 +12,10 @@ updates:
     directory: "/functions/generate-password"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps(generate-password)"
 
@@ -18,6 +23,10 @@ updates:
     directory: "/functions/generate-2fa"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps(generate-2fa)"
 
@@ -25,6 +34,10 @@ updates:
     directory: "/functions/authenticate"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps(authenticate)"
 
@@ -32,5 +45,9 @@ updates:
     directory: "/frontend"
     schedule:
       interval: "monthly"
+    open-pull-requests-limit: 2
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: "deps(frontend)"
