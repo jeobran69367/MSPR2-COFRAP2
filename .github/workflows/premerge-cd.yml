@@ -6,7 +6,6 @@ name: Pre-merge CD
 on:
   pull_request:
     branches: [main]
-  merge_group:
 
 concurrency:
   group: premerge-cd-${{ github.ref }}
