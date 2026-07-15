@@ -112,7 +112,7 @@ jobs:
   #    (fonctions + frontend ensemble, seuil global 80 %)
   # ──────────────────────────────────────────────────────────────
   coverage-gate:
-    name: "Gate couverture globale (≥ ${{ env.COVERAGE_FAIL_UNDER }}%)"
+    name: "Gate couverture globale (≥ 80%)"
     runs-on: ubuntu-latest
     needs: test
     steps:
