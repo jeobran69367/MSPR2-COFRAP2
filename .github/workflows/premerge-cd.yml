@@ -228,24 +228,24 @@ jobs:
             -d "{\"username\": \"$USER\"}" | tee /tmp/2fa_response.json | grep -q qr_code
 
           PASSWORD=$(python3 - <<'PY'
-import json
-with open('/tmp/pwd_response.json') as f:
-    print(json.load(f)['password'])
-PY
-)
+            import json
+            with open('/tmp/pwd_response.json') as f:
+              print(json.load(f)['password'])
+            PY
+            )
           TOTP=$(python3 - <<'PY'
-import json
-with open('/tmp/2fa_response.json') as f:
-    print(json.load(f)['totp_secret'])
-PY
-)
+            import json
+            with open('/tmp/2fa_response.json') as f:
+              print(json.load(f)['totp_secret'])
+            PY
+            )
           CODE=$(python3 - <<'PY'
-import base64, pyotp, json
-with open('/tmp/2fa_response.json') as f:
-    secret = json.load(f)['totp_secret']
-print(pyotp.TOTP(secret).now())
-PY
-)
+            import base64, pyotp, json
+            with open('/tmp/2fa_response.json') as f:
+              secret = json.load(f)['totp_secret']
+            print(pyotp.TOTP(secret).now())
+            PY
+            )
 
           echo "→ authenticate (succès attendu)"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/authenticate" \
@@ -258,6 +258,8 @@ PY
             -d "{\"username\": \"$USER\", \"password\": \"wrong\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'; then
             echo "::error::Le mauvais mot de passe n'a pas été rejeté"; exit 1
           fi
+
+
 
   premerge-cd-success:
     name: Pre-merge CD OK
