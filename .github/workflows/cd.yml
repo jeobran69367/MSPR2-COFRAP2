@@ -1,12 +1,10 @@
 name: CD
 
-# Pipeline de déploiement continu. Ne se déclenche QUE si le workflow CI
-# a réussi (workflow_run), pour garantir que rien n'est jamais construit,
-# scanné ou déployé sans être passé par les tests et le lint au préalable.
+# Pipeline de déploiement continu. Se déclenche après un merge sur main,
+# une fois que la protection de branche a déjà validé la CI et le
+# pré-merge CD sur la pull request.
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
+  push:
     branches: [main]
 
 concurrency:
@@ -18,7 +16,7 @@ env:
   IMAGE_NAMESPACE: cofrap
 
 jobs:
-  # N'exécute la suite que si le CI déclencheur sur main a réussi.
+  # N'exécute la suite que pour les pushes sur main.
   guard:
     name: Vérification du déclencheur
     runs-on: ubuntu-latest

@@ -78,7 +78,7 @@ package Python autour du `handler.py`).
 
 Deux workflows GitHub Actions, strictement séparés :
 
-### `ci.yml` — sur chaque push / pull request
+### `ci.yml` — sur les pull requests
 
 1. **lint** — `ruff check` sur les 3 fonctions et le frontend.
 2. **test** — matrice par composant (`generate-password`, `generate-2fa`,
@@ -103,7 +103,7 @@ Deux workflows GitHub Actions, strictement séparés :
    second *required check* pour empêcher le merge vers `main` si la
    validation CD pré-merge échoue.
 
-### `cd.yml` — uniquement après un CI vert (`workflow_run`) sur `main`
+### `cd.yml` — sur le push vers `main` après merge
 
 1. **build** — une image Docker par composant (3 fonctions via `faas-cli
    build` + frontend via `frontend/Dockerfile`), construite **une seule
@@ -131,7 +131,8 @@ Deux workflows GitHub Actions, strictement séparés :
 
 Pour sécuriser `main`, il faut configurer dans GitHub la protection de
 branche avec au minimum ces checks requis : `CI OK ✅` et `Pre-merge CD
-OK`.
+OK`. Le workflow `cd.yml` s’exécute ensuite au merge, sur le push vers
+`main`, sans relancer la CI.
 
 ### Secrets / environnements GitHub à configurer
 
