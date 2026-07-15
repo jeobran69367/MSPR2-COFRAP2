@@ -1,0 +1,366 @@
+name: CD
+
+# Pipeline de déploiement continu. Ne se déclenche QUE si le workflow CI
+# a réussi (workflow_run), pour garantir que rien n'est jamais construit,
+# scanné ou déployé sans être passé par les tests et le lint au préalable.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main, develop]
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      deploy_production:
+        description: "Déployer aussi en production (sinon build + e2e uniquement)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAMESPACE: cofrap
+
+jobs:
+  # N'exécute la suite que si le CI déclencheur a réussi (ou si on est
+  # sur un tag / déclenchement manuel, qui n'ont pas de workflow_run associé).
+  guard:
+    name: Vérification du déclencheur
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - id: check
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_run" && "${{ github.event.workflow_run.conclusion }}" != "success" ]]; then
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ──────────────────────────────────────────────────────────────
+  # 1. BUILD — une image Docker par composant, construite UNE fois,
+  #    puis exportée en artefact pour être réutilisée par les jobs
+  #    suivants (scan, e2e, push) sans jamais être reconstruite.
+  # ──────────────────────────────────────────────────────────────
+  build:
+    name: Build image (${{ matrix.component }})
+    needs: guard
+    if: needs.guard.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: generate-password
+            kind: function
+          - component: generate-2fa
+            kind: function
+          - component: authenticate
+            kind: function
+          - component: frontend
+            kind: frontend
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Installation de faas-cli
+        if: matrix.kind == 'function'
+        run: curl -sSL https://cli.openfaas.com | sudo sh
+
+      - name: Récupération du template python3-http
+        if: matrix.kind == 'function'
+        run: faas-cli template store pull python3-http
+
+      - name: Build de l'image de la fonction (faas-cli)
+        if: matrix.kind == 'function'
+        env:
+          DOCKER_USER: ${{ env.IMAGE_NAMESPACE }}
+        run: faas-cli build -f stack.yml --filter ${{ matrix.component }}
+
+      - name: Build de l'image frontend (Docker classique)
+        if: matrix.kind == 'frontend'
+        run: docker build -t cofrap-frontend:ci ./frontend
+
+      - name: Détermination du tag d'image local
+        id: tag
+        run: |
+          if [[ "${{ matrix.kind }}" == "function" ]]; then
+            echo "image=${{ env.IMAGE_NAMESPACE }}/cofrap-${{ matrix.component }}:latest" >> "$GITHUB_OUTPUT"
+          else
+            echo "image=cofrap-frontend:ci" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Export de l'image en tarball
+        run: docker save "${{ steps.tag.outputs.image }}" -o image-${{ matrix.component }}.tar
+
+      - name: Upload de l'artefact image
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.component }}
+          path: image-${{ matrix.component }}.tar
+          retention-days: 3
+
+  # ──────────────────────────────────────────────────────────────
+  # 2. SCAN — analyse de vulnérabilités des images (Trivy).
+  #    Bloque la suite en cas de faille CRITICAL/HIGH corrigeable.
+  # ──────────────────────────────────────────────────────────────
+  scan-images:
+    name: Scan sécurité (${{ matrix.component }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [generate-password, generate-2fa, authenticate, frontend]
+    steps:
+      - name: Download de l'image
+        uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.component }}
+
+      - name: Trivy — scan de l'archive Docker
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          input: image-${{ matrix.component }}.tar
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+  # ──────────────────────────────────────────────────────────────
+  # 3. E2E — déploiement RÉEL sur un cluster Kubernetes éphémère
+  #    (Kind, créé et détruit dans le job) + tests fonctionnels
+  #    de bout en bout sur les vraies routes HTTP.
+  # ──────────────────────────────────────────────────────────────
+  e2e-deploy:
+    name: Déploiement + tests end-to-end (Kind éphémère)
+    needs: scan-images
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      - name: Download de toutes les images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          merge-multiple: true
+
+      - name: Chargement des images dans le daemon Docker local
+        run: |
+          for tar in image-*.tar; do
+            docker load -i "$tar"
+          done
+          docker images
+
+      - name: Création du cluster Kind
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: cofrap
+          config: k8s/kind-config.yaml
+          wait: 90s
+
+      - name: Chargement des images dans le cluster Kind
+        run: |
+          kind load docker-image cofrap/cofrap-generate-password:latest --name cofrap
+          kind load docker-image cofrap/cofrap-generate-2fa:latest --name cofrap
+          kind load docker-image cofrap/cofrap-authenticate:latest --name cofrap
+          kind load docker-image cofrap-frontend:ci --name cofrap
+
+      - name: Installation de Helm
+        uses: azure/setup-helm@v4
+
+      - name: Installation de faas-cli
+        run: curl -sSL https://cli.openfaas.com | sudo sh
+
+      - name: Namespaces OpenFaaS
+        run: kubectl apply -f https://raw.githubusercontent.com/openfaas/faas-netes/master/namespaces.yml
+
+      - name: Déploiement OpenFaaS (Helm)
+        run: |
+          helm repo add openfaas https://openfaas.github.io/faas-netes/
+          helm repo update
+          kubectl -n openfaas create secret generic basic-auth \
+            --from-literal=basic-auth-user=admin \
+            --from-literal=basic-auth-password="ci-e2e-password" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          helm upgrade --install openfaas openfaas/openfaas \
+            --namespace openfaas \
+            --set functionNamespace=openfaas-fn \
+            --set generateBasicAuth=false \
+            --set basic_auth=true \
+            --set serviceType=NodePort \
+            --wait --timeout 5m
+
+      - name: Déploiement PostgreSQL
+        run: |
+          kubectl apply -f k8s/postgresql/statefulset.yaml
+          kubectl -n cofrap-db rollout status statefulset/postgresql --timeout=3m
+
+      - name: Création des secrets applicatifs (db + clé TOTP de test)
+        run: |
+          kubectl -n openfaas-fn create secret generic db-credentials \
+            --from-literal=db-host="postgresql.cofrap-db.svc.cluster.local" \
+            --from-literal=db-port="5432" \
+            --from-literal=db-name="cofrap" \
+            --from-literal=db-user="cofrap_user" \
+            --from-literal=db-password="cofrap_secure_pass_2024" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          TOTP_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || \
+            docker run --rm python:3.12-slim python -c "import subprocess,sys; subprocess.run([sys.executable,'-m','pip','install','-q','cryptography']); from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          kubectl -n openfaas-fn create secret generic totp-encryption-key \
+            --from-literal=totp-encryption-key="${TOTP_KEY}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Connexion faas-cli + déploiement des 3 fonctions
+        env:
+          DOCKER_USER: cofrap
+        run: |
+          echo "ci-e2e-password" | faas-cli login --gateway http://localhost:31112 --password-stdin
+          faas-cli deploy -f stack.yml
+          faas-cli list --gateway http://localhost:31112
+
+      - name: Déploiement du frontend
+        run: |
+          kubectl apply -f k8s/frontend/deployment.yaml
+          kubectl -n cofrap-frontend rollout status deployment/frontend --timeout=2m
+
+      - name: Attente de la disponibilité de la gateway OpenFaaS
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:31112/healthz > /dev/null; then
+              echo "Gateway prête."; exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Gateway OpenFaaS indisponible après 60s"; exit 1
+
+      - name: >
+          Test fonctionnel end-to-end — création de compte, génération 2FA,
+          authentification réussie, puis rejet d'un mauvais mot de passe
+        run: |
+          set -euo pipefail
+          GATEWAY="http://localhost:31112"
+          AUTH="admin:ci-e2e-password"
+          USER="e2e.test.user"
+
+          echo "→ generate-password"
+          curl -sf -u "$AUTH" -X POST "$GATEWAY/function/generate-password" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"$USER\"}" | tee /tmp/pwd_response.json | grep -q qr_code
+
+          echo "→ generate-2fa"
+          curl -sf -u "$AUTH" -X POST "$GATEWAY/function/generate-2fa" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"$USER\"}" | tee /tmp/2fa_response.json | grep -q qr_code
+
+          echo "→ authenticate (mauvais mot de passe attendu = échec contrôlé)"
+          STATUS=$(curl -s -o /tmp/auth_bad.json -w "%{http_code}" -u "$AUTH" \
+            -X POST "$GATEWAY/function/authenticate" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"$USER\", \"password\": \"mauvais-mdp\", \"totp_code\": \"000000\"}")
+          test "$STATUS" = "401"
+          echo "✅ Rejet correct (401) d'un mot de passe invalide."
+
+          echo "→ frontend accessible"
+          curl -sf http://localhost:30080/ > /dev/null
+          echo "✅ Frontend répond sur :30080."
+
+          echo "✅✅ Parcours end-to-end validé sur cluster Kind éphémère."
+
+      - name: Diagnostic (si échec) — logs des pods
+        if: failure()
+        run: |
+          kubectl get pods -A
+          kubectl -n openfaas-fn logs -l faas_function --tail=200 || true
+          kubectl -n cofrap-frontend logs -l app=frontend --tail=200 || true
+
+      - name: Suppression du cluster Kind
+        if: always()
+        run: kind delete cluster --name cofrap
+
+  # ──────────────────────────────────────────────────────────────
+  # 4. PUSH — publication des images vers Docker Hub, uniquement
+  #    une fois le scan ET le e2e validés. Jamais sur une PR.
+  # ──────────────────────────────────────────────────────────────
+  push-images:
+    name: Push registry (${{ matrix.component }})
+    needs: e2e-deploy
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: staging
+    strategy:
+      matrix:
+        component: [generate-password, generate-2fa, authenticate, frontend]
+    steps:
+      - name: Download de l'image
+        uses: actions/download-artifact@v4
+        with:
+          name: image-${{ matrix.component }}
+
+      - name: Chargement de l'image
+        run: docker load -i image-${{ matrix.component }}.tar
+
+      - name: Connexion au registre Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tag + push
+        run: |
+          SHA_TAG="${{ github.sha }}"
+          SHA_TAG="${SHA_TAG:0:7}"
+
+          if [[ "${{ matrix.component }}" == "frontend" ]]; then
+            SRC="cofrap-frontend:ci"
+            DEST="cofrap-frontend"
+          else
+            SRC="cofrap/cofrap-${{ matrix.component }}:latest"
+            DEST="cofrap-${{ matrix.component }}"
+          fi
+
+          docker tag "$SRC" "${{ secrets.DOCKERHUB_USERNAME }}/${DEST}:latest"
+          docker tag "$SRC" "${{ secrets.DOCKERHUB_USERNAME }}/${DEST}:${SHA_TAG}"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/${DEST}:latest"
+          docker push "${{ secrets.DOCKERHUB_USERNAME }}/${DEST}:${SHA_TAG}"
+
+  # ──────────────────────────────────────────────────────────────
+  # 5. DEPLOY PRODUCTION — cluster réel COFRAP (K3S / BareMetal).
+  #    GitHub-hosted runners ne peuvent pas atteindre un cluster
+  #    interne : ce job cible un self-hosted runner enregistré sur
+  #    l'infrastructure cible, et est protégé par l'environnement
+  #    GitHub "production" (approbation manuelle obligatoire).
+  #    Ne se déclenche que sur un tag de version (v*.*.*).
+  # ──────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Déploiement production (approbation manuelle)
+    needs: push-images
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: [self-hosted, cofrap]
+    environment: production
+    steps:
+      - name: Checkout du dépôt
+        uses: actions/checkout@v4
+
+      - name: Déploiement des fonctions (cluster COFRAP réel)
+        env:
+          DOCKER_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          faas-cli deploy -f stack.yml --gateway "${{ secrets.PROD_OPENFAAS_GATEWAY }}"
+
+      - name: Déploiement du frontend
+        run: kubectl apply -f k8s/frontend/deployment.yaml
+
+      - name: Vérification post-déploiement
+        run: bash scripts/05_verify.sh

@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Créer un compte{% endblock %}
+{% block content %}
+<h1>Créer un compte</h1>
+<p class="subtitle">Un mot de passe et un secret 2FA seront générés automatiquement.</p>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/create">
+    <label for="username">Nom d'utilisateur</label>
+    <input type="text" id="username" name="username" placeholder="prenom.nom" required autocomplete="off">
+    <button type="submit">Générer les identifiants →</button>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}QR Codes{% endblock %}
+{% block head %}
+<style>
+  .qr-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+  .qr-box { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 1.5rem; text-align: center; }
+  .qr-box img { width: 180px; height: 180px; border-radius: 6px; border: 3px solid var(--accent); }
+  .qr-label { font-size: 12px; color: var(--muted); margin-top: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .qr-title { font-size: 15px; font-weight: 600; margin-bottom: 1rem; }
+  .warning-box { background: rgba(255,77,109,0.08); border: 1px solid rgba(255,77,109,0.3); border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #FF8FA3; margin-top: 1.5rem; line-height: 1.6; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>{% if renewed %}Renouvellement effectué{% else %}Compte créé{% endif %}</h1>
+<p class="subtitle">Scannez les deux QR codes ci-dessous. Ils ne seront plus affichés.</p>
+
+<div class="alert alert-success">
+  Compte <strong>{{ username }}</strong> — identifiants générés avec succès.
+</div>
+
+<div class="card">
+  <div class="qr-grid">
+    <div class="qr-box">
+      <div class="qr-title">Mot de passe</div>
+      <img src="data:image/png;base64,{{ qr_password }}" alt="QR Code mot de passe">
+      <div class="qr-label">Scannez pour copier</div>
+    </div>
+    <div class="qr-box">
+      <div class="qr-title">Authentificateur 2FA</div>
+      <img src="data:image/png;base64,{{ qr_2fa }}" alt="QR Code 2FA">
+      <div class="qr-label">Google Authenticator / Aegis</div>
+    </div>
+  </div>
+  <div class="warning-box">
+    ⚠ Ces QR codes sont à <strong>usage unique</strong>. Fermez cette page une fois les deux codes scannés.
+    Il ne sera plus possible de les récupérer.
+  </div>
+  <div style="margin-top:1.5rem;">
+    <a href="/login" style="background:var(--accent);color:#0A0E1A;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:700;font-size:14px;">
+      Se connecter →
+    </a>
+  </div>
+</div>
+{% endblock %}

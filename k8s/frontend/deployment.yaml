@@ -1,0 +1,71 @@
+# k8s/frontend/deployment.yaml
+# Déploiement du frontend FastAPI sur le cluster, exposé en NodePort 30080
+# (cf. k8s/kind-config.yaml). Le frontend communique avec la gateway
+# OpenFaaS via son adresse interne au cluster (openfaas.openfaas.svc),
+# jamais via un accès direct à la base de données.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cofrap-frontend
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: cofrap-frontend
+  labels:
+    app: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: frontend
+          image: cofrap-frontend:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OPENFAAS_URL
+              value: "http://gateway.openfaas:8080"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: cofrap-frontend
+spec:
+  selector:
+    app: frontend
+  type: NodePort
+  ports:
+    - port: 8000
+      targetPort: 8000
+      nodePort: 30080

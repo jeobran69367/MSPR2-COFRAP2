@@ -1,0 +1,36 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: "pip"
+    directory: "/functions/generate-password"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(generate-password)"
+
+  - package-ecosystem: "pip"
+    directory: "/functions/generate-2fa"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(generate-2fa)"
+
+  - package-ecosystem: "pip"
+    directory: "/functions/authenticate"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(authenticate)"
+
+  - package-ecosystem: "pip"
+    directory: "/frontend"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "deps(frontend)"

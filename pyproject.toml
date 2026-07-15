@@ -1,0 +1,39 @@
+[tool.pytest.ini_options]
+testpaths = ["functions", "frontend/tests"]
+python_files = ["test_*.py"]
+addopts = "-ra --strict-markers"
+
+[tool.coverage.run]
+branch = true
+source = [
+    "functions/generate-password",
+    "functions/generate-2fa",
+    "functions/authenticate",
+    "frontend/app",
+]
+omit = [
+    "**/test_*.py",
+    "**/__pycache__/*",
+    "frontend/app/static/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
+fail_under = 80
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "build", "template"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# E501: lignes longues tolérées (messages d'erreur, requêtes SQL)
+# E702: `cur.close(); conn.close()` groupé volontairement dans les handlers
+# UP038: `isinstance(x, (str, bytes))` reste plus lisible que `X | Y` ici
+ignore = ["E501", "E702", "UP038"]

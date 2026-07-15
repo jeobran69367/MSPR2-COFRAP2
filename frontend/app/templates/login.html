@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Connexion{% endblock %}
+{% block content %}
+<h1>Connexion</h1>
+<p class="subtitle">Saisissez vos identifiants et votre code 2FA.</p>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <form method="post" action="/login">
+    <label for="username">Nom d'utilisateur</label>
+    <input type="text" id="username" name="username" placeholder="prenom.nom" required autocomplete="username">
+
+    <label for="password">Mot de passe</label>
+    <input type="password" id="password" name="password" placeholder="••••••••••••••••••••••••" required autocomplete="current-password">
+
+    <label for="totp_code">Code 2FA</label>
+    <input type="text" id="totp_code" name="totp_code" placeholder="123456" maxlength="6" required autocomplete="one-time-code" style="letter-spacing:0.3em; font-size:18px;">
+
+    <button type="submit">Se connecter →</button>
+  </form>
+  <p style="font-size:13px; color:var(--muted); margin-top:1rem;">
+    Pas encore de compte ? <a href="/create" style="color:var(--accent);">Créer un compte</a>
+  </p>
+</div>
+{% endblock %}

@@ -1,0 +1,21 @@
+# k8s/kind-config.yaml
+# Configuration du cluster Kind pour COFRAP
+# Un node control-plane qui expose les ports nécessaires
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: cofrap
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # OpenFaaS Gateway
+      - containerPort: 31112
+        hostPort: 31112
+        protocol: TCP
+      # Frontend FastAPI
+      - containerPort: 30080
+        hostPort: 30080
+        protocol: TCP
+      # PostgreSQL (accès local optionnel)
+      - containerPort: 30432
+        hostPort: 30432
+        protocol: TCP

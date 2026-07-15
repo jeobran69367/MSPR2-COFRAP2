@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Renouvellement{% endblock %}
+{% block content %}
+<h1>Renouvellement des identifiants</h1>
+<p class="subtitle">Vos identifiants ont expiré (+ de 6 mois). Générez-en de nouveaux.</p>
+
+{% if error %}
+<div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<div class="alert alert-error" style="margin-bottom:1.5rem;">
+  ⏱ Vos identifiants ont expiré. Un nouveau mot de passe et un nouveau secret 2FA vont être générés.
+</div>
+
+<div class="card">
+  <form method="post" action="/renew">
+    <label for="username">Nom d'utilisateur</label>
+    <input type="text" id="username" name="username" value="{{ username }}" placeholder="prenom.nom" required>
+    <button type="submit">Renouveler les identifiants →</button>
+  </form>
+</div>
+{% endblock %}

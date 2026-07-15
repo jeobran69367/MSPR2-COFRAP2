@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Connecté{% endblock %}
+{% block content %}
+<h1>Authentification réussie</h1>
+<p class="subtitle">Bienvenue sur le portail COFRAP.</p>
+
+<div class="alert alert-success">
+  Connecté en tant que <strong>{{ username }}</strong>.
+</div>
+
+<div class="card">
+  <p style="font-size:14px; color:var(--muted); line-height:1.7;">
+    Votre session est active. Vos identifiants sont valides pour encore 6 mois.
+    Passé ce délai, vous serez invité à les renouveler.
+  </p>
+  <div style="margin-top:1.5rem;">
+    <a href="/login" style="border:1px solid var(--border);color:var(--text);padding:10px 20px;border-radius:6px;text-decoration:none;font-size:14px;">
+      Se déconnecter
+    </a>
+  </div>
+</div>
+{% endblock %}

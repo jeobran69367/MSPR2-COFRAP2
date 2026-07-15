@@ -1,0 +1,22 @@
+.env
+.env.local
+.DS_Store
+__pycache__/
+*.py[cod]
+build/
+template/
+frontend/app/__pycache__/
+*.log
+README copy 2.md
+
+# Tests / couverture / CI
+.pytest_cache/
+.coverage
+coverage.xml
+coverage-*.xml
+junit*.xml
+htmlcov/
+bandit-report.json
+.ruff_cache/
+*.egg-info/
+
