@@ -102,7 +102,7 @@ jobs:
         run: docker save "${{ steps.tag.outputs.image }}" -o image-${{ matrix.component }}.tar
 
       - name: Upload de l'artefact image
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: image-${{ matrix.component }}
           path: image-${{ matrix.component }}.tar

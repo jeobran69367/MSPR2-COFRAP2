@@ -99,7 +99,7 @@ jobs:
 
       - name: Upload des rapports (couverture + JUnit)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports-${{ matrix.component }}
           path: |
@@ -153,7 +153,7 @@ jobs:
 
       - name: Upload rapport de couverture combiné (HTML + XML)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-global
           path: |
@@ -191,7 +191,7 @@ jobs:
 
       - name: Upload du rapport bandit
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bandit-report
           path: bandit-report.json
