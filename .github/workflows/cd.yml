@@ -7,15 +7,7 @@ on:
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main, develop]
-  push:
-    tags: ["v*.*.*"]
-  workflow_dispatch:
-    inputs:
-      deploy_production:
-        description: "Déployer aussi en production (sinon build + e2e uniquement)"
-        type: boolean
-        default: false
+    branches: [main]
 
 concurrency:
   group: cd-${{ github.ref }}
@@ -26,8 +18,7 @@ env:
   IMAGE_NAMESPACE: cofrap
 
 jobs:
-  # N'exécute la suite que si le CI déclencheur a réussi (ou si on est
-  # sur un tag / déclenchement manuel, qui n'ont pas de workflow_run associé).
+  # N'exécute la suite que si le CI déclencheur sur main a réussi.
   guard:
     name: Vérification du déclencheur
     runs-on: ubuntu-latest
