@@ -8,7 +8,7 @@ functions:
   generate-password:
     lang: python3-http
     handler: ./functions/generate-password
-    image: ${DOCKER_USER}/cofrap-generate-password:latest
+    image: ${DOCKER_USER}/cofrap-generate-password:${TAG}
     secrets:
       - db-host
       - db-port
@@ -21,7 +21,7 @@ functions:
   generate-2fa:
     lang: python3-http
     handler: ./functions/generate-2fa
-    image: ${DOCKER_USER}/cofrap-generate-2fa:latest
+    image: ${DOCKER_USER}/cofrap-generate-2fa:${TAG}
     secrets:
       - db-host
       - db-port
@@ -35,7 +35,7 @@ functions:
   authenticate:
     lang: python3-http
     handler: ./functions/authenticate
-    image: ${DOCKER_USER}/cofrap-authenticate:latest
+    image: ${DOCKER_USER}/cofrap-authenticate:${TAG}
     secrets:
       - db-host
       - db-port

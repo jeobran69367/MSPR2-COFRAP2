@@ -51,6 +51,7 @@ jobs:
         if: matrix.kind == 'function'
         env:
           DOCKER_USER: ${{ env.IMAGE_NAMESPACE }}
+          TAG: latest
         run: faas-cli build -f stack.yml --filter ${{ matrix.component }}
 
       - name: Build de l'image frontend (Docker classique)
@@ -131,18 +132,38 @@ jobs:
           config: k8s/kind-config.yaml
           wait: 90s
 
-      - name: Chargement des images dans le cluster Kind
+      - name: Chargement de l'image frontend dans le cluster Kind
+        run: kind load docker-image cofrap-frontend:ci --name cofrap
+
+      - name: Connexion Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: >
+          Publication temporaire des images de fonctions (OpenFaaS Community
+          Edition refuse de déployer une image qui n'est pas réellement
+          publique — un simple `kind load` local ne suffit pas)
         run: |
-          kind load docker-image cofrap/cofrap-generate-password:latest --name cofrap
-          kind load docker-image cofrap/cofrap-generate-2fa:latest --name cofrap
-          kind load docker-image cofrap/cofrap-authenticate:latest --name cofrap
-          kind load docker-image cofrap-frontend:ci --name cofrap
+          set -euo pipefail
+          TAG="ci-${GITHUB_SHA::7}"
+          for FN in generate-password generate-2fa authenticate; do
+            docker tag "cofrap/cofrap-${FN}:latest" "${{ secrets.DOCKERHUB_USERNAME }}/cofrap-${FN}:${TAG}"
+            docker push "${{ secrets.DOCKERHUB_USERNAME }}/cofrap-${FN}:${TAG}"
+          done
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "DOCKER_USER=${{ secrets.DOCKERHUB_USERNAME }}" >> "$GITHUB_ENV"
 
       - name: Installation de Helm
         uses: azure/setup-helm@v4
 
       - name: Installation de faas-cli
         run: curl -sSL https://cli.openfaas.com | sudo sh
+
+      - name: Récupération du template python3-http
+        run: faas-cli template store pull python3-http
 
       - name: Namespaces OpenFaaS
         run: kubectl apply -f https://raw.githubusercontent.com/openfaas/faas-netes/master/namespaces.yml
@@ -161,6 +182,7 @@ jobs:
             --set generateBasicAuth=false \
             --set basic_auth=true \
             --set serviceType=NodePort \
+            --set faasnetes.imagePullPolicy=IfNotPresent \
             --wait --timeout 5m
 
       - name: Déploiement PostgreSQL
@@ -168,16 +190,24 @@ jobs:
           kubectl apply -f k8s/postgresql/statefulset.yaml
           kubectl -n cofrap-db rollout status statefulset/postgresql --timeout=3m
 
-      - name: Installation de pyotp pour le test e2e
-        run: python3 -m pip install pyotp==2.9.0
+      - name: Installation des dépendances Python pour le test e2e
+        run: python3 -m pip install pyotp==2.9.0 bcrypt cryptography
 
       - name: Création des secrets applicatifs (db + clé TOTP de test)
         run: |
-          kubectl -n openfaas-fn create secret generic db-credentials \
+          kubectl -n openfaas-fn create secret generic db-host \
             --from-literal=db-host="postgresql.cofrap-db.svc.cluster.local" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-port \
             --from-literal=db-port="5432" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-name \
             --from-literal=db-name="cofrap" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-user \
             --from-literal=db-user="cofrap_user" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-password \
             --from-literal=db-password="cofrap_secure_pass_2024" \
             --dry-run=client -o yaml | kubectl apply -f -
 
@@ -189,10 +219,14 @@ jobs:
 
       - name: Connexion faas-cli + déploiement des 3 fonctions
         env:
-          DOCKER_USER: cofrap
+          DOCKER_USER: ${{ env.DOCKER_USER }}
+          TAG: ${{ env.TAG }}
         run: |
           echo "ci-e2e-password" | faas-cli login --gateway http://localhost:31112 --password-stdin
-          faas-cli deploy -f stack.yml
+          faas-cli deploy -f stack.yml --gateway http://localhost:31112
+          kubectl -n openfaas-fn rollout status deployment/generate-password --timeout=3m
+          kubectl -n openfaas-fn rollout status deployment/generate-2fa --timeout=3m
+          kubectl -n openfaas-fn rollout status deployment/authenticate --timeout=3m
           faas-cli list --gateway http://localhost:31112
 
       - name: Déploiement du frontend
@@ -216,41 +250,38 @@ jobs:
           GATEWAY="http://localhost:31112"
           AUTH="admin:ci-e2e-password"
           USER="e2e.test.user"
+          E2E_PASSWORD="Aa1!Aa1!Aa1!Aa1!Aa1!Aa1!"
 
           echo "→ generate-password"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/generate-password" \
             -H "Content-Type: application/json" \
-            -d "{\"username\": \"$USER\"}" | tee /tmp/pwd_response.json | grep -q qr_code
+            -d "{\"username\": \"$USER\"}" > /tmp/pwd_response.json
+          python3 -c "import json; payload=json.load(open('/tmp/pwd_response.json')); assert payload.get('qr_code'), 'Réponse generate-password sans qr_code'"
 
           echo "→ generate-2fa"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/generate-2fa" \
             -H "Content-Type: application/json" \
-            -d "{\"username\": \"$USER\"}" | tee /tmp/2fa_response.json | grep -q qr_code
+            -d "{\"username\": \"$USER\"}" > /tmp/2fa_response.json
+          python3 -c "import json; payload=json.load(open('/tmp/2fa_response.json')); assert payload.get('qr_code'), 'Réponse generate-2fa sans qr_code'"
 
-          PASSWORD=$(python3 - <<'PY'
-import json
-with open('/tmp/pwd_response.json') as f:
-    print(json.load(f)['password'])
-PY
-)
-          TOTP=$(python3 - <<'PY'
-import json
-with open('/tmp/2fa_response.json') as f:
-    print(json.load(f)['totp_secret'])
-PY
-)
-          CODE=$(python3 - <<'PY'
-import base64, pyotp, json
-with open('/tmp/2fa_response.json') as f:
-    secret = json.load(f)['totp_secret']
-print(pyotp.TOTP(secret).now())
-PY
-)
+          echo "→ préparation de credentials de test pour authenticate"
+          TOTP_SECRET=$(python3 -c "import pyotp; print(pyotp.random_base32())")
+          TOTP_KEY=$(kubectl -n openfaas-fn get secret totp-encryption-key -o jsonpath='{.data.totp-encryption-key}' | base64 -d)
+          HASHED_PASSWORD=$(E2E_PASSWORD="$E2E_PASSWORD" python3 -c "import os,bcrypt; print(bcrypt.hashpw(os.environ['E2E_PASSWORD'].encode(), bcrypt.gensalt()).decode())")
+          ENCRYPTED_MFA=$(TOTP_KEY="$TOTP_KEY" TOTP_SECRET="$TOTP_SECRET" python3 -c "import os; from cryptography.fernet import Fernet; print(Fernet(os.environ['TOTP_KEY'].encode()).encrypt(os.environ['TOTP_SECRET'].encode()).decode())")
+          CODE=$(TOTP_SECRET="$TOTP_SECRET" python3 -c "import os,pyotp; print(pyotp.TOTP(os.environ['TOTP_SECRET']).now())")
+          kubectl -n cofrap-db exec -i statefulset/postgresql -- \
+            psql -U cofrap_user -d cofrap \
+            -v username="$USER" \
+            -v hashed_password="$HASHED_PASSWORD" \
+            -v encrypted_mfa="$ENCRYPTED_MFA" <<'SQL'
+          UPDATE users SET password = :'hashed_password', mfa = :'encrypted_mfa', expired = 0 WHERE username = :'username';
+          SQL
 
           echo "→ authenticate (succès attendu)"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/authenticate" \
             -H "Content-Type: application/json" \
-            -d "{\"username\": \"$USER\", \"password\": \"$PASSWORD\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'
+            -d "{\"username\": \"$USER\", \"password\": \"$E2E_PASSWORD\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'
 
           echo "→ authenticate (échec attendu)"
           if curl -sf -u "$AUTH" -X POST "$GATEWAY/function/authenticate" \
@@ -258,6 +289,7 @@ PY
             -d "{\"username\": \"$USER\", \"password\": \"wrong\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'; then
             echo "::error::Le mauvais mot de passe n'a pas été rejeté"; exit 1
           fi
+
 
   premerge-cd-success:
     name: Pre-merge CD OK
