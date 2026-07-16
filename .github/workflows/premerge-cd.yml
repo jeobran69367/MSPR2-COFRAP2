@@ -161,6 +161,7 @@ jobs:
             --set generateBasicAuth=false \
             --set basic_auth=true \
             --set serviceType=NodePort \
+            --set functionPullPolicy=IfNotPresent \
             --wait --timeout 5m
 
       - name: Déploiement PostgreSQL
@@ -173,12 +174,21 @@ jobs:
 
       - name: Création des secrets applicatifs (db + clé TOTP de test)
         run: |
-          kubectl -n openfaas-fn create secret generic db-credentials \
+          DB_PASSWORD="cofrap_secure_pass_2024"
+          kubectl -n openfaas-fn create secret generic db-host \
             --from-literal=db-host="postgresql.cofrap-db.svc.cluster.local" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-port \
             --from-literal=db-port="5432" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-name \
             --from-literal=db-name="cofrap" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-user \
             --from-literal=db-user="cofrap_user" \
-            --from-literal=db-password="cofrap_secure_pass_2024" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-password \
+            --from-literal=db-password="${DB_PASSWORD}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
           TOTP_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || \
@@ -187,13 +197,14 @@ jobs:
             --from-literal=totp-encryption-key="${TOTP_KEY}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Connexion faas-cli + déploiement des 3 fonctions
+      - name: Déploiement des 3 fonctions via CRD OpenFaaS
         env:
           DOCKER_USER: cofrap
         run: |
-          echo "ci-e2e-password" | faas-cli login --gateway http://localhost:31112 --password-stdin
-          faas-cli deploy -f stack.yml
-          faas-cli list --gateway http://localhost:31112
+          faas-cli generate -f stack.yml | kubectl apply -f -
+          kubectl -n openfaas-fn rollout status deployment/generate-password --timeout=3m
+          kubectl -n openfaas-fn rollout status deployment/generate-2fa --timeout=3m
+          kubectl -n openfaas-fn rollout status deployment/authenticate --timeout=3m
 
       - name: Déploiement du frontend
         run: |
