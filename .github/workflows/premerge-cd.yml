@@ -171,8 +171,8 @@ jobs:
           kubectl apply -f k8s/postgresql/statefulset.yaml
           kubectl -n cofrap-db rollout status statefulset/postgresql --timeout=3m
 
-      - name: Installation de pyotp pour le test e2e
-        run: python3 -m pip install pyotp==2.9.0
+      - name: Installation des dépendances Python pour le test e2e
+        run: python3 -m pip install pyotp==2.9.0 bcrypt cryptography
 
       - name: Création des secrets applicatifs (db + clé TOTP de test)
         run: |
@@ -227,41 +227,37 @@ jobs:
           GATEWAY="http://localhost:31112"
           AUTH="admin:ci-e2e-password"
           USER="e2e.test.user"
+          E2E_PASSWORD="Aa1!Aa1!Aa1!Aa1!Aa1!Aa1!"
 
           echo "→ generate-password"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/generate-password" \
             -H "Content-Type: application/json" \
-            -d "{\"username\": \"$USER\"}" | tee /tmp/pwd_response.json | grep -q qr_code
+            -d "{\"username\": \"$USER\"}" > /tmp/pwd_response.json
+          python3 -c "import json; payload=json.load(open('/tmp/pwd_response.json')); assert payload.get('qr_code'), 'Réponse generate-password sans qr_code'"
 
           echo "→ generate-2fa"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/generate-2fa" \
             -H "Content-Type: application/json" \
-            -d "{\"username\": \"$USER\"}" | tee /tmp/2fa_response.json | grep -q qr_code
+            -d "{\"username\": \"$USER\"}" > /tmp/2fa_response.json
+          python3 -c "import json; payload=json.load(open('/tmp/2fa_response.json')); assert payload.get('qr_code'), 'Réponse generate-2fa sans qr_code'"
 
-          PASSWORD=$(python3 - <<'PY'
-            import json
-            with open('/tmp/pwd_response.json') as f:
-              print(json.load(f)['password'])
-            PY
-            )
-          TOTP=$(python3 - <<'PY'
-            import json
-            with open('/tmp/2fa_response.json') as f:
-              print(json.load(f)['totp_secret'])
-            PY
-            )
-          CODE=$(python3 - <<'PY'
-            import base64, pyotp, json
-            with open('/tmp/2fa_response.json') as f:
-              secret = json.load(f)['totp_secret']
-            print(pyotp.TOTP(secret).now())
-            PY
-            )
+          echo "→ préparation de credentials de test pour authenticate"
+          TOTP_SECRET=$(python3 -c "import pyotp; print(pyotp.random_base32())")
+          TOTP_KEY=$(kubectl -n openfaas-fn get secret totp-encryption-key -o jsonpath='{.data.totp-encryption-key}' | base64 -d)
+          HASHED_PASSWORD=$(E2E_PASSWORD="$E2E_PASSWORD" python3 -c "import os,bcrypt; print(bcrypt.hashpw(os.environ['E2E_PASSWORD'].encode(), bcrypt.gensalt()).decode())")
+          ENCRYPTED_MFA=$(TOTP_KEY="$TOTP_KEY" TOTP_SECRET="$TOTP_SECRET" python3 -c "import os; from cryptography.fernet import Fernet; print(Fernet(os.environ['TOTP_KEY'].encode()).encrypt(os.environ['TOTP_SECRET'].encode()).decode())")
+          CODE=$(TOTP_SECRET="$TOTP_SECRET" python3 -c "import os,pyotp; print(pyotp.TOTP(os.environ['TOTP_SECRET']).now())")
+          kubectl -n cofrap-db exec statefulset/postgresql -- \
+            psql -U cofrap_user -d cofrap \
+            -v username="$USER" \
+            -v hashed_password="$HASHED_PASSWORD" \
+            -v encrypted_mfa="$ENCRYPTED_MFA" \
+            -c "UPDATE users SET password = :'hashed_password', mfa = :'encrypted_mfa', expired = 0 WHERE username = :'username';"
 
           echo "→ authenticate (succès attendu)"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/authenticate" \
             -H "Content-Type: application/json" \
-            -d "{\"username\": \"$USER\", \"password\": \"$PASSWORD\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'
+            -d "{\"username\": \"$USER\", \"password\": \"$E2E_PASSWORD\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'
 
           echo "→ authenticate (échec attendu)"
           if curl -sf -u "$AUTH" -X POST "$GATEWAY/function/authenticate" \
@@ -269,7 +265,6 @@ jobs:
             -d "{\"username\": \"$USER\", \"password\": \"wrong\", \"totp_code\": \"$CODE\"}" | grep -Eq 'true|authenticated'; then
             echo "::error::Le mauvais mot de passe n'a pas été rejeté"; exit 1
           fi
-
 
 
   premerge-cd-success:
