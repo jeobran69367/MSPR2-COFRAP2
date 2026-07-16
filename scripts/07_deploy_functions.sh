@@ -12,6 +12,8 @@ if [[ -z "${DOCKER_USER:-}" ]]; then
   exit 1
 fi
 
+export TAG="${TAG:-latest}"
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ÉTAPE 1 — Login DockerHub"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
