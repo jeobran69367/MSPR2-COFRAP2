@@ -34,16 +34,25 @@ echo "✅ Table users OK"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ÉTAPE 4 — Création secret OpenFaaS"
+echo "  ÉTAPE 4 — Création des secrets OpenFaaS"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-kubectl -n openfaas-fn create secret generic db-credentials \
-  --from-literal=db-host="postgresql.cofrap-db.svc.cluster.local" \
-  --from-literal=db-port="5432" \
-  --from-literal=db-name="cofrap" \
-  --from-literal=db-user="cofrap_user" \
-  --from-literal=db-password="cofrap_secure_pass_2024" \
-  --dry-run=client -o yaml | kubectl apply -f -
-echo "✅ Secret db-credentials créé"
+# OpenFaaS résout chaque secret déclaré dans stack.yml en cherchant un
+# objet Secret Kubernetes DONT LE NOM CORRESPOND EXACTEMENT au secret
+# (ex: "db-host"), et le monte en fichier /var/openfaas/secrets/db-host.
+# Il faut donc 5 secrets distincts, pas un seul secret combiné.
+declare -A DB_SECRETS=(
+  [db-host]="postgresql.cofrap-db.svc.cluster.local"
+  [db-port]="5432"
+  [db-name]="cofrap"
+  [db-user]="cofrap_user"
+  [db-password]="cofrap_secure_pass_2024"
+)
+for NAME in "${!DB_SECRETS[@]}"; do
+  kubectl -n openfaas-fn create secret generic "${NAME}" \
+    --from-literal="${NAME}=${DB_SECRETS[$NAME]}" \
+    --dry-run=client -o yaml | kubectl apply -f -
+done
+echo "✅ Secrets db-host, db-port, db-name, db-user, db-password créés"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
