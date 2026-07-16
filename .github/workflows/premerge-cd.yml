@@ -270,12 +270,13 @@ jobs:
           HASHED_PASSWORD=$(E2E_PASSWORD="$E2E_PASSWORD" python3 -c "import os,bcrypt; print(bcrypt.hashpw(os.environ['E2E_PASSWORD'].encode(), bcrypt.gensalt()).decode())")
           ENCRYPTED_MFA=$(TOTP_KEY="$TOTP_KEY" TOTP_SECRET="$TOTP_SECRET" python3 -c "import os; from cryptography.fernet import Fernet; print(Fernet(os.environ['TOTP_KEY'].encode()).encrypt(os.environ['TOTP_SECRET'].encode()).decode())")
           CODE=$(TOTP_SECRET="$TOTP_SECRET" python3 -c "import os,pyotp; print(pyotp.TOTP(os.environ['TOTP_SECRET']).now())")
-          kubectl -n cofrap-db exec statefulset/postgresql -- \
+          kubectl -n cofrap-db exec -i statefulset/postgresql -- \
             psql -U cofrap_user -d cofrap \
             -v username="$USER" \
             -v hashed_password="$HASHED_PASSWORD" \
-            -v encrypted_mfa="$ENCRYPTED_MFA" \
-            -c "UPDATE users SET password = :'hashed_password', mfa = :'encrypted_mfa', expired = 0 WHERE username = :'username';"
+            -v encrypted_mfa="$ENCRYPTED_MFA" <<'SQL'
+          UPDATE users SET password = :'hashed_password', mfa = :'encrypted_mfa', expired = 0 WHERE username = :'username';
+          SQL
 
           echo "→ authenticate (succès attendu)"
           curl -sf -u "$AUTH" -X POST "$GATEWAY/function/authenticate" \
