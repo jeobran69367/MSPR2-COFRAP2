@@ -51,6 +51,7 @@ jobs:
         if: matrix.kind == 'function'
         env:
           DOCKER_USER: ${{ env.IMAGE_NAMESPACE }}
+          TAG: latest
         run: faas-cli build -f stack.yml --filter ${{ matrix.component }}
 
       - name: Build de l'image frontend (Docker classique)
