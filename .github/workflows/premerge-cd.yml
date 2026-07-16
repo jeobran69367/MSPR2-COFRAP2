@@ -204,6 +204,9 @@ jobs:
         run: |
           echo "ci-e2e-password" | faas-cli login --gateway http://localhost:31112 --password-stdin
           faas-cli generate -f stack.yml | kubectl apply -f -
+          kubectl -n openfaas-fn rollout status deployment/generate-password --timeout=3m
+          kubectl -n openfaas-fn rollout status deployment/generate-2fa --timeout=3m
+          kubectl -n openfaas-fn rollout status deployment/authenticate --timeout=3m
           faas-cli list --gateway http://localhost:31112
 
       - name: Déploiement du frontend
