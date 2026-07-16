@@ -144,6 +144,9 @@ jobs:
       - name: Installation de faas-cli
         run: curl -sSL https://cli.openfaas.com | sudo sh
 
+      - name: Récupération du template python3-http
+        run: faas-cli template store pull python3-http
+
       - name: Namespaces OpenFaaS
         run: kubectl apply -f https://raw.githubusercontent.com/openfaas/faas-netes/master/namespaces.yml
 
