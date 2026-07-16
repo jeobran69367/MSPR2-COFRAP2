@@ -176,11 +176,19 @@ jobs:
 
       - name: Création des secrets applicatifs (db + clé TOTP de test)
         run: |
-          kubectl -n openfaas-fn create secret generic db-credentials \
+          kubectl -n openfaas-fn create secret generic db-host \
             --from-literal=db-host="postgresql.cofrap-db.svc.cluster.local" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-port \
             --from-literal=db-port="5432" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-name \
             --from-literal=db-name="cofrap" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-user \
             --from-literal=db-user="cofrap_user" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n openfaas-fn create secret generic db-password \
             --from-literal=db-password="cofrap_secure_pass_2024" \
             --dry-run=client -o yaml | kubectl apply -f -
 
