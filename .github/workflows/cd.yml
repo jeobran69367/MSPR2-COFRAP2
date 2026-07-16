@@ -226,7 +226,7 @@ jobs:
           DOCKER_USER: cofrap
         run: |
           echo "ci-e2e-password" | faas-cli login --gateway http://localhost:31112 --password-stdin
-          faas-cli deploy -f stack.yml
+          faas-cli generate -f stack.yml | kubectl apply -f -
           faas-cli list --gateway http://localhost:31112
 
       - name: Déploiement du frontend
